@@ -64,6 +64,7 @@ def cmd_search():
         if profit > 0:
             profit_list.append([name, values_pair, profit])
 
+    profit_list.sort(key=lambda x:(x[2]))
 
     for widget in frame.winfo_children()[10:]:
         widget.destroy()
@@ -73,7 +74,7 @@ def cmd_search():
     for item in profit_list[::-1]:
         _id, _quality = item[0].split('#')
 
-        enchant = item[0][-1] if "@" in item[0] else '0'
+        enchant = item[0][-3] if "@" in item[0] else '0'
         tier = _id[1]
         quality = quality_list[int(_quality) -1]
         if _id in id_to_name.keys():
