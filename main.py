@@ -1,4 +1,6 @@
 import requests
+from datetime import datetime
+import json
 from tkinter import *
 from datainfo import (
     city_list, file_list, client_version, client_title, quality_list
@@ -18,29 +20,57 @@ def human_readable_value(value):
     else:
         return str(value)
 
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+flatten = lambda t: [item for sublist in t for item in sublist]
+
+def item_requests(items, city):
+    item_list = list(chunks(items, 190))
+    city_queries = []
+    bm_queries = []
+    for query in item_list:
+        q = ''
+        if query == item_list[-1]:
+            q = ','.join(query)[:-1]
+        else:
+            q = ','.join(query)
+        city_queries.append(requests.get(data_route + q + '?locations=' + city).json())
+        bm_queries.append(requests.get(data_route + q + '?locations=blackmarket').json())
+
+    return (flatten(city_queries), flatten(bm_queries))
+
+
+
 def cmd_search():
     city = var_city.get() 
     item_file = 'items/' + var_file.get()
     item_query = open(item_file, 'r').read().replace('\n', ',')[:-1]
+    item_array = open(item_file, 'r').read().split('\n')
+    r = item_requests(item_array, city)
     if not item_query:
         return
-    
-    response_city = requests.get(data_route + item_query + '?locations=' + city).json()
-    response_blackmarket = requests.get(data_route + item_query + '?locations=blackmarket').json()
-    
+    response_city= r[0]
+    response_blackmarket = r[1]
+#    response_city = requests.get(data_route + item_query + '?locations=' + city).json()
+#    response_blackmarket = requests.get(data_route + item_query + '?locations=blackmarket').json()
     offer_dict = {}
     for entry in response_city:
         item = entry['item_id']
         value = entry['sell_price_min']
         quality = entry['quality']
         name = item + "#" + str(quality)
-    
+
         if value:
             offer_dict[name] = [value, 0]
 
     for entry in response_blackmarket:
         item = entry['item_id']
         value = entry['buy_price_max']
+        time = entry['sell_price_min_date']
+        a = datetime.now() - datetime.strptime(time, '%Y-%m-%dT%H:%M:%S')
         qualities = [x for x in range(entry['quality'], 6)]
         items_to_purchase = [item+"#"+str(x) for x in qualities]
         city_values = []
@@ -51,18 +81,18 @@ def cmd_search():
                 city_values.append(item_city_value)
     
         if len(city_values) > 0:
-            offer_dict[items_to_purchase[0]] = [min(city_values), value]
-        
-    full_list = sorted(offer_dict.items(), key=lambda x:(x[0], -x[1][1]+x[1][0]))
+            offer_dict[items_to_purchase[0]] = [min(city_values), value, a]
+    full_list = sorted(offer_dict.items(), key=lambda x:(x[0], -x[1][1]+x[1][0], time))
     profit_list = []
-    
+
     for item in full_list:
         name = item[0]
         values_pair = item[1]
+        time = values_pair[2]
         profit = round(values_pair[1]*(1-tax) - values_pair[0])
-    
-        if profit > 0:
-            profit_list.append([name, values_pair, profit])
+
+        if profit > 50000 and (1 - values_pair[0] / profit) < 0.85:
+            profit_list.append([name, values_pair, profit, time])
 
     profit_list.sort(key=lambda x:(x[2]))
 
@@ -91,6 +121,7 @@ def cmd_search():
         price = human_readable_value(item[1][0])
         blackmarket = human_readable_value(item[1][1])
         profit = human_readable_value(item[2])
+        time = item [3]
 
         img = PhotoImage(file='img/'+item_id+'.png')
         label = Label(frame, image=img)
@@ -100,6 +131,7 @@ def cmd_search():
         Label(frame, text=price, padx=15).grid(row=3+i, column=2, sticky=W)
         Label(frame, text=blackmarket, padx=15).grid(row=3+i, column=3, sticky=W)
         Label(frame, text=profit, padx=15).grid(row=3+i, column=4, sticky=W)
+        Label(frame, text=time, padx=15).grid(row=3+i, column=5, sticky=W)
         i += 1
 
     gui.update()
